@@ -93,7 +93,7 @@ All labs run on **serverless compute** by default — no cluster setup needed. S
 | Compute Type | Used In | Cost | You Need To... |
 |---|---|---|---|
 | Serverless Notebooks | All labs | ~$0.07/DBU, per-second | Nothing — auto-managed |
-| Foundation Model APIs | Labs 01-08 | Pay-per-token | Choose cost profile in notebook |
+| Foundation Model APIs | Labs 01-08 | Pay-per-token | Uses `databricks-llama-4-maverick` |
 | Vector Search Endpoint | Labs 02-09 | ~$0.50-1.00/hr | **Delete when done for the day** |
 | Model Serving Endpoint | Labs 09-10 | Pay-per-token, scale-to-zero | Delete when done |
 
