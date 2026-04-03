@@ -3,20 +3,21 @@
 setup-catalog.py -- Download S-1 filings from SEC EDGAR, create Unity Catalog resources.
 
 Usage:
-    pip install sec-edgar-downloader databricks-sdk
+    pip install databricks-sdk
     export DATABRICKS_HOST=https://...
     export DATABRICKS_TOKEN=dapi...
     python scripts/setup-catalog.py
 """
 
+import json
 import os
+import re
 import sys
 import time
-import shutil
+import urllib.request
 from pathlib import Path
 
 from databricks.sdk import WorkspaceClient
-from sec_edgar_downloader import Downloader
 
 sys.path.insert(0, str(Path(__file__).parent))
 from companies import COMPANIES
@@ -26,49 +27,95 @@ SCHEMA = "default"
 VOLUME = "sec_filings"
 FILINGS_DIR = Path(__file__).parent.parent / "assets" / "sec-filings"
 
+HEADERS = {"User-Agent": "IPOAnalyzer contact@example.com"}
+
 
 def download_filings():
-    """Download S-1 filings from SEC EDGAR for all companies."""
+    """Download S-1 filings from SEC EDGAR using the FULL-TEXT search + submissions API."""
     FILINGS_DIR.mkdir(parents=True, exist_ok=True)
 
-    dl = Downloader("IPOAnalyzer", "contact@example.com", str(FILINGS_DIR))
+    downloaded = 0
+    failed = []
 
-    for company in COMPANIES:
-        ticker = company["ticker"]
+    for c in COMPANIES:
+        ticker = c["ticker"]
         dest = FILINGS_DIR / f"{ticker}-S1.html"
         if dest.exists():
             print(f"  Already exists: {ticker}")
+            downloaded += 1
             continue
 
-        print(f"  Downloading S-1 for {ticker} ({company['company']})...")
+        ipo_year = c["ipo_date"][:4]
+        print(f"  {ticker} ({c['company']}): searching EDGAR...", end=" ")
+
         try:
-            dl.get("S-1", ticker, limit=1)
-            # sec-edgar-downloader saves to nested dirs — find and move the file
-            search_dir = FILINGS_DIR / "sec-edgar-filings" / ticker
-            html_files = list(search_dir.rglob("*.htm*")) if search_dir.exists() else []
+            # Search EDGAR for S-1 filings by company name
+            search_url = (
+                f"https://efts.sec.gov/LATEST/search-index?"
+                f"q=%22{c['company'].replace(' ', '%20')}%22"
+                f"&forms=S-1"
+                f"&dateRange=custom&startdt={ipo_year}-01-01&enddt={int(ipo_year)+1}-12-31"
+            )
+            req = urllib.request.Request(search_url, headers=HEADERS)
+            with urllib.request.urlopen(req) as resp:
+                data = json.loads(resp.read())
+                hits = data.get("hits", {}).get("hits", [])
 
-            if html_files:
-                shutil.copy2(str(html_files[0]), str(dest))
-                print(f"    OK: {dest.name}")
-            else:
-                # Try S-1/A (amendment) as fallback
-                print(f"    No S-1 found, trying S-1/A...")
-                dl.get("S-1/A", ticker, limit=1)
-                html_files = list(search_dir.rglob("*.htm*")) if search_dir.exists() else []
-                if html_files:
-                    shutil.copy2(str(html_files[0]), str(dest))
-                    print(f"    OK (S-1/A): {dest.name}")
-                else:
-                    print(f"    SKIPPED: No S-1 filing found for {ticker}")
+            if not hits:
+                print("NO HITS (may use F-1 or different form)")
+                failed.append(ticker)
+                time.sleep(0.5)
+                continue
+
+            # Get accession number from first hit
+            adsh = hits[0]["_source"]["adsh"]
+            adsh_clean = adsh.replace("-", "")
+            cik_clean = c["cik"].lstrip("0")
+
+            # Fetch the filing index to find the main S-1 document
+            idx_url = f"https://www.sec.gov/Archives/edgar/data/{cik_clean}/{adsh_clean}/{adsh}-index.htm"
+            req2 = urllib.request.Request(idx_url, headers=HEADERS)
+            with urllib.request.urlopen(req2) as resp2:
+                idx_content = resp2.read().decode("utf-8", errors="replace")
+
+            # Find the main S-1 document link (look for s-1/s1 in filename)
+            links = re.findall(r'href="(/Archives/edgar/data/[^"]+\.htm)"', idx_content)
+            s1_link = None
+            for link in links:
+                if "s-1" in link.lower() or "s1" in link.lower():
+                    s1_link = link
+                    break
+            if not s1_link:
+                # Skip exhibits and index, take the first content document
+                for link in links:
+                    lower = link.lower()
+                    if not any(x in lower for x in ["index", "exhibit", "ex-", "ex1", "ex2", "ex3", "ex4", "ex5"]):
+                        s1_link = link
+                        break
+
+            if not s1_link:
+                print(f"NO MAIN DOC in filing index")
+                failed.append(ticker)
+                time.sleep(0.5)
+                continue
+
+            # Download the actual S-1 filing
+            doc_url = f"https://www.sec.gov{s1_link}"
+            req3 = urllib.request.Request(doc_url, headers=HEADERS)
+            with urllib.request.urlopen(req3) as resp3:
+                content = resp3.read()
+
+            dest.write_bytes(content)
+            print(f"OK ({len(content) / 1024:.0f} KB)")
+            downloaded += 1
+
         except Exception as e:
-            print(f"    ERROR: {e}")
+            print(f"ERROR: {str(e)[:80]}")
+            failed.append(ticker)
 
-        time.sleep(0.5)  # SEC fair access
+        time.sleep(0.5)  # SEC fair access: max 10 req/sec
 
-    # Clean up nested directory structure
-    nested = FILINGS_DIR / "sec-edgar-filings"
-    if nested.exists():
-        shutil.rmtree(nested)
+    return downloaded, failed
 
 
 def main():
@@ -79,9 +126,11 @@ def main():
 
     # 1. Download filings
     print("Step 1: Downloading S-1 filings from SEC EDGAR...")
-    download_filings()
+    downloaded, failed = download_filings()
     filings = sorted(FILINGS_DIR.glob("*-S1.html"))
     print(f"\n  {len(filings)} filings ready")
+    if failed:
+        print(f"  Failed: {failed} (may use F-1 form or different filing type)")
     print()
 
     # 2. Create catalog resources
