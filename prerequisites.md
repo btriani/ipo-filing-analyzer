@@ -8,48 +8,30 @@ You need a Databricks workspace with **pay-as-you-go** pricing. Community Editio
 
 Sign up: [https://www.databricks.com/try-databricks](https://www.databricks.com/try-databricks)
 
-> **Important:** Choose the pay-as-you-go plan. You only pay for what you use. Total cost for all labs is ~$15-25.
+> **Important:** Choose the pay-as-you-go plan. You only pay for what you use. Total cost for all labs is ~$12-19.
 
 ### Required Features
 
 Your workspace must have:
 - **Unity Catalog** enabled (default on new workspaces)
 - **Serverless compute** available
-- **Foundation Model APIs** access (DBRX, Meta Llama, etc.)
+- **Foundation Model APIs** access — specifically `databricks-llama-4-maverick`
 
-## 2. Databricks CLI
+## 2. Foundation Model APIs
 
-Used by setup and cleanup scripts.
+Labs use `databricks-llama-4-maverick` for all LLM calls (tool calling, scoring, evaluation). Verify it is available in your workspace:
 
-**macOS:**
-```bash
-brew tap databricks/tap
-brew install databricks
-```
+1. Go to **Serving** in the left sidebar.
+2. Search for `databricks-llama-4-maverick`.
+3. If it appears with a green status, you're set.
 
-**Windows / Linux:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
-```
-
-Full install docs: [https://docs.databricks.com/en/dev-tools/cli/install.html](https://docs.databricks.com/en/dev-tools/cli/install.html)
-
-### Authenticate
-
-```bash
-databricks configure
-```
-
-Enter your workspace URL (e.g., `https://adb-1234567890.12.azuredatabricks.net`) and a personal access token.
-
-Alternatively, use OAuth:
-```bash
-databricks auth login --host https://your-workspace-url
-```
+Other endpoints available on trial workspaces (not required, but good to know):
+- `databricks-meta-llama-3-3-70b-instruct` — good alternative for simple tasks
+- `databricks-meta-llama-3-1-8b-instruct` — cheap, good for summarization
 
 ## 3. Python 3.10+
 
-Required for notebooks and setup scripts.
+Required for running the setup scripts locally. Notebooks install their own dependencies via `%pip` — you don't need everything locally.
 
 **macOS:**
 ```bash
@@ -66,60 +48,79 @@ winget install Python.Python.3.12
 sudo apt install python3.12 python3.12-venv
 ```
 
-### Python Packages
-
-Install locally (for running setup scripts):
-```bash
-pip install databricks-sdk mlflow langchain langchain-community
-```
-
-> **Note:** Notebooks install their own dependencies via `%pip` — you don't need to install everything locally.
-
-## 4. Git
-
-For cloning this repo and version control.
+### Python Packages (for setup scripts only)
 
 ```bash
-git --version
-# Should show 2.40+ (or latest)
+pip install databricks-sdk
 ```
 
-## 5. Compute
+The notebooks install their own packages. The full set used across all labs:
 
-All labs run on **serverless compute** by default — no cluster setup needed. Serverless starts instantly and bills per-second of actual usage.
+```
+databricks-sdk
+sec-edgar-downloader
+yfinance
+langchain
+langchain-community
+langgraph
+mlflow
+databricks-agents
+```
+
+## 4. Compute
+
+All labs run on **serverless compute** — no cluster setup needed. Serverless starts instantly and bills per-second of actual usage.
 
 ### What's Running (and What Costs Money)
 
-| Compute Type | Used In | Cost | You Need To... |
+| Compute Type | Used In | Cost | Action Required |
 |---|---|---|---|
 | Serverless Notebooks | All labs | ~$0.07/DBU, per-second | Nothing — auto-managed |
 | Foundation Model APIs | Labs 01-08 | Pay-per-token | Uses `databricks-llama-4-maverick` |
-| Vector Search Endpoint | Labs 02-09 | ~$0.50-1.00/hr | **Delete when done for the day** |
-| Model Serving Endpoint | Labs 09-10 | Pay-per-token, scale-to-zero | Delete when done |
+| Vector Search Endpoint | Labs 01-07 | ~$0.50-1.00/hr | **Delete when done for the day** |
+| Model Serving Endpoint | Labs 07-08 | Pay-per-token, scale-to-zero | Delete when done |
 
-> **Important:** The Vector Search endpoint is the only resource that bills continuously. Create it in Lab 02, keep it running through Lab 09, then delete it. If you stop between sessions, delete it and recreate it when you resume.
+> **Important:** The Vector Search endpoint is the only resource that bills continuously. Lab 01 creates it. Keep it running through Lab 07, then delete it (or delete and recreate between sessions).
 
-### Alternative: Classic Clusters
+## 5. Catalog
 
-If your workspace supports classic clusters (pay-as-you-go accounts), you can create one instead:
-- **Runtime:** DBR 15.4 LTS ML (or newer)
-- **Node type:** Single node, i3.xlarge (or equivalent)
-- **Auto-termination:** 30 minutes
+The setup script creates everything in the `ipo_analyzer` catalog:
 
-Serverless is recommended for these labs — it's simpler and often cheaper for short sessions.
-
-## Verification
-
-Run the prerequisites check:
-```bash
-./scripts/check-prerequisites.sh
+```
+ipo_analyzer
+└── default
+    ├── filings_raw        (raw S-1 text, ~22 filings)
+    ├── filing_chunks      (chunked text for Vector Search)
+    ├── stock_returns      (price data from yfinance)
+    └── clarity_scores     (populated in Lab 06)
 ```
 
-## Next Step
+Run the setup script before Lab 01:
 
-Run the setup script, then start Lab 01:
 ```bash
 python scripts/setup-catalog.py
 ```
 
-Start with [Lab 01: Document Parsing & Chunking](labs/01-document-parsing-chunking/workbook.md).
+This downloads ~22 S-1 filings via `sec-edgar-downloader`, loads stock return data, creates the Unity Catalog objects, and confirms the Vector Search endpoint exists (or creates it).
+
+## Cost Estimate
+
+| Resource | Estimated Cost |
+|---|---|
+| Serverless compute (all labs) | ~$3-5 |
+| Foundation Model API calls (all labs) | ~$5-8 |
+| Vector Search endpoint (one session) | ~$2-4 |
+| Model Serving endpoint (Lab 07-08) | ~$2-3 |
+| **Total** | **~$12-19** |
+
+Costs vary based on how long you leave the Vector Search endpoint running between sessions. Delete it when you stop for the day.
+
+## Next Step
+
+Run the setup script, then open Lab 01:
+
+```bash
+python scripts/setup-catalog.py
+```
+
+Start with [Lab 01: Data Pipeline](labs/01-data-pipeline.ipynb).
