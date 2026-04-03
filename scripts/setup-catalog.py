@@ -163,6 +163,75 @@ def main():
             w.files.upload(f"{volume_path}/{f.name}", fh, overwrite=True)
     print()
 
+    # 4. Load stock performance data via yfinance
+    print("Step 4: Loading stock performance data from Yahoo Finance...")
+    try:
+        import yfinance as yf
+        import pandas as pd
+        from datetime import datetime, timedelta
+
+        rows = []
+        for c in COMPANIES:
+            ticker = c["ticker"]
+            ipo_date = c["ipo_date"]
+            ipo_year = ipo_date[:4]
+            print(f"  {ticker}: ", end="", flush=True)
+            try:
+                stock = yf.Ticker(ticker)
+                end_date = (datetime.strptime(ipo_date, "%Y-%m-%d") + timedelta(days=420)).strftime("%Y-%m-%d")
+                hist = stock.history(start=ipo_date, end=end_date)
+                if len(hist) < 2:
+                    print("insufficient data")
+                    continue
+                hist.index = hist.index.tz_localize(None)
+                ipo_price = float(hist.iloc[0]["Close"])
+                ipo_dt = pd.Timestamp(ipo_date)
+
+                def _price_at(months):
+                    after = hist.index[hist.index >= ipo_dt + pd.DateOffset(months=months)]
+                    return float(hist.loc[after[0]]["Close"]) if len(after) > 0 else None
+
+                p3, p6, p12 = _price_at(3), _price_at(6), _price_at(12)
+                ret = round(((p12 - ipo_price) / ipo_price * 100), 1) if p12 else None
+                rows.append({"company": c["company"], "ticker": ticker, "sector": c["sector"],
+                             "ipo_date": ipo_date, "ipo_price": round(ipo_price, 2),
+                             "price_3m": round(p3, 2) if p3 else None,
+                             "price_6m": round(p6, 2) if p6 else None,
+                             "price_12m": round(p12, 2) if p12 else None,
+                             "twelve_month_return_pct": float(ret) if ret else None})
+                print(f"${ipo_price:.0f} → {ret:+.1f}%" if ret else "partial")
+            except Exception as e:
+                print(f"ERROR: {e}")
+
+        if rows:
+            # Upload as Delta table via SQL INSERT
+            create_sql = f"""CREATE OR REPLACE TABLE {CATALOG}.{SCHEMA}.stock_performance (
+                company STRING, ticker STRING, sector STRING, ipo_date STRING,
+                ipo_price DOUBLE, price_3m DOUBLE, price_6m DOUBLE, price_12m DOUBLE,
+                twelve_month_return_pct DOUBLE)"""
+            w.statement_execution.execute_statement(warehouse_id=wh_id, statement=create_sql, wait_timeout="30s")
+            for row in rows:
+                vals = []
+                for col in ["company","ticker","sector","ipo_date","ipo_price","price_3m","price_6m","price_12m","twelve_month_return_pct"]:
+                    v = row[col]
+                    if v is None:
+                        vals.append("NULL")
+                    elif isinstance(v, str):
+                        vals.append(f"'{v}'")
+                    else:
+                        vals.append(str(v))
+                w.statement_execution.execute_statement(
+                    warehouse_id=wh_id,
+                    statement=f"INSERT INTO {CATALOG}.{SCHEMA}.stock_performance VALUES ({', '.join(vals)})",
+                    wait_timeout="30s")
+            print(f"\n  {len(rows)} companies loaded into {CATALOG}.{SCHEMA}.stock_performance")
+        else:
+            print("  WARNING: No stock data loaded. Install yfinance: pip install yfinance")
+    except ImportError:
+        print("  yfinance not installed — skipping stock data. Install with: pip install yfinance")
+        print("  Lab 01 will still work if the stock_performance table is populated manually.")
+    print()
+
     print("=" * 60)
     print("Setup complete!")
     print(f"  Catalog : {CATALOG}")
