@@ -30,6 +30,20 @@ Prices as of early 2026. Always verify at [Databricks Pricing](https://www.datab
 
 > **Recommendation:** Use serverless compute whenever possible. It starts in seconds, scales automatically, and has no idle cost.
 
+### Understanding Compute Types
+
+Your Databricks workspace uses several types of compute. Here's what matters for cost:
+
+| Type | How It Works | Cost Risk |
+|------|-------------|-----------|
+| **Serverless Notebooks** | Starts instantly, stops when idle. Per-second billing. | Low — auto-managed |
+| **Serverless SQL Warehouse** | Auto-starts for SQL queries, auto-stops after 10 min idle. | Low — auto-managed |
+| **Foundation Model APIs** | Pay-per-token. No idle cost. | Low — proportional to usage |
+| **Vector Search Endpoint** | Always-on dedicated compute. Bills continuously until deleted. | **High — must delete manually** |
+| **Model Serving Endpoint** | Scale-to-zero available. Bills per-token when active. | Medium — can scale to zero |
+
+> **The #1 cost mistake:** Forgetting to delete the Vector Search endpoint. At ~$0.50-1.00/hr, an overnight endpoint costs ~$12. Always run `python scripts/cleanup.py` when done.
+
 ### Foundation Model APIs (Pay-per-token)
 
 | Model | Input | Output |

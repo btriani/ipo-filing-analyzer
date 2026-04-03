@@ -60,52 +60,39 @@ def main():
 
     w = WorkspaceClient()
 
-    # 2. Create catalog
-    print(f"Creating catalog: {CATALOG}")
-    try:
-        w.catalogs.create(name=CATALOG, comment="GenAI Lab Guide — sample catalog for certification labs")
-        print(f"  Created catalog: {CATALOG}")
-    except Exception as e:
-        if "already exists" in str(e).lower():
-            print(f"  Catalog {CATALOG} already exists, skipping.")
-        else:
-            raise
+    # 2. Find a SQL warehouse to execute DDL statements
+    warehouses = list(w.warehouses.list())
+    if not warehouses:
+        print("ERROR: No SQL warehouse found. Create one in your Databricks workspace first.")
+        sys.exit(1)
+    wh_id = warehouses[0].id
+    print(f"Using warehouse: {warehouses[0].name} ({wh_id})")
+    print()
 
-    # 3. Create schema
+    # 3. Create catalog, schema, and volume via SQL (works on Default Storage workspaces)
     full_schema = f"{CATALOG}.{SCHEMA}"
-    print(f"Creating schema: {full_schema}")
-    try:
-        w.schemas.create(name=SCHEMA, catalog_name=CATALOG, comment="Default schema for lab data")
-        print(f"  Created schema: {full_schema}")
-    except Exception as e:
-        if "already exists" in str(e).lower():
-            print(f"  Schema {full_schema} already exists, skipping.")
-        else:
-            raise
-
-    # 4. Create volume
     full_volume = f"{CATALOG}.{SCHEMA}.{VOLUME}"
-    print(f"Creating volume: {full_volume}")
-    try:
-        w.volumes.create(
-            catalog_name=CATALOG,
-            schema_name=SCHEMA,
-            name=VOLUME,
-            volume_type="MANAGED",
-            comment="arXiv AI/ML papers for RAG pipeline labs"
-        )
-        print(f"  Created volume: {full_volume}")
-    except Exception as e:
-        if "already exists" in str(e).lower():
-            print(f"  Volume {full_volume} already exists, skipping.")
-        else:
-            raise
 
-    # 5. Upload PDFs
+    print("Creating Unity Catalog resources...")
+    for sql in [
+        f"CREATE CATALOG IF NOT EXISTS {CATALOG}",
+        f"CREATE SCHEMA IF NOT EXISTS {full_schema}",
+        f"CREATE VOLUME IF NOT EXISTS {full_volume}",
+    ]:
+        print(f"  Running: {sql}")
+        result = w.statement_execution.execute_statement(
+            warehouse_id=wh_id,
+            statement=sql,
+            wait_timeout="30s",
+        )
+        print(f"    Result: {result.status.state}")
+    print()
+
+    # 4. Upload PDFs
     volume_path = f"/Volumes/{CATALOG}/{SCHEMA}/{VOLUME}"
     pdf_files = sorted(PAPERS_DIR.glob("*.pdf"))
 
-    print(f"\nUploading {len(pdf_files)} papers to {volume_path}...")
+    print(f"Uploading {len(pdf_files)} papers to {volume_path}...")
     for pdf_path in pdf_files:
         remote_path = f"{volume_path}/{pdf_path.name}"
         print(f"  Uploading: {pdf_path.name}")

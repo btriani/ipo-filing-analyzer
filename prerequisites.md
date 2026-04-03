@@ -84,15 +84,29 @@ git --version
 # Should show 2.40+ (or latest)
 ```
 
-## 5. Cluster Configuration
+## 5. Compute
 
-When creating a cluster for the labs, use these settings:
+All labs run on **serverless compute** by default — no cluster setup needed. Serverless starts instantly and bills per-second of actual usage.
+
+### What's Running (and What Costs Money)
+
+| Compute Type | Used In | Cost | You Need To... |
+|---|---|---|---|
+| Serverless Notebooks | All labs | ~$0.07/DBU, per-second | Nothing — auto-managed |
+| Foundation Model APIs | Labs 01-08 | Pay-per-token | Choose cost profile in notebook |
+| Vector Search Endpoint | Labs 02-09 | ~$0.50-1.00/hr | **Delete when done for the day** |
+| Model Serving Endpoint | Labs 09-10 | Pay-per-token, scale-to-zero | Delete when done |
+
+> **Important:** The Vector Search endpoint is the only resource that bills continuously. Create it in Lab 02, keep it running through Lab 09, then delete it. If you stop between sessions, delete it and recreate it when you resume.
+
+### Alternative: Classic Clusters
+
+If your workspace supports classic clusters (pay-as-you-go accounts), you can create one instead:
 - **Runtime:** DBR 15.4 LTS ML (or newer)
-- **Node type:** Single node, Standard_DS3_v2 (or equivalent)
-- **Autoscaling:** Disabled (single node is sufficient)
-- **Auto-termination:** 30 minutes (saves cost)
+- **Node type:** Single node, i3.xlarge (or equivalent)
+- **Auto-termination:** 30 minutes
 
-> **Cost tip:** Use serverless compute when available — it starts faster and you only pay per-second of usage.
+Serverless is recommended for these labs — it's simpler and often cheaper for short sessions.
 
 ## Verification
 
