@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-test-labs.py -- Fast validation of Labs 05-10.
+test-labs.py -- Fast validation of Labs 01-08 (IPO Analyzer).
 
 Optimized: shared resources, cached LLM/agent, minimal API calls.
 Runs in ~30-40 seconds total instead of 2+ minutes.
@@ -9,7 +9,7 @@ Usage:
     export DATABRICKS_HOST=https://...
     export DATABRICKS_TOKEN=dapi...
     python scripts/test-labs.py              # all labs
-    python scripts/test-labs.py --labs 5 6 7  # specific labs
+    python scripts/test-labs.py --labs 1 2 3  # specific labs
 """
 
 import argparse
@@ -22,13 +22,13 @@ from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import StatementState
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-CATALOG = "genai_lab_guide"
+CATALOG = "ipo_analyzer"
 SCHEMA = "default"
 LLM_ENDPOINT = "databricks-llama-4-maverick"
-VS_ENDPOINT = "genai_lab_guide_vs_endpoint"
-VS_INDEX = f"{CATALOG}.{SCHEMA}.arxiv_chunks_index"
-MODEL_NAME = f"{CATALOG}.{SCHEMA}.arxiv_chat_agent"
-ENDPOINT_NAME = "genai-lab-agent-endpoint"
+VS_ENDPOINT = "ipo_analyzer_vs_endpoint"
+VS_INDEX = f"{CATALOG}.{SCHEMA}.filing_chunks_index"
+MODEL_NAME = f"{CATALOG}.{SCHEMA}.ipo_filing_agent"
+ENDPOINT_NAME = "ipo-analyzer-endpoint"
 
 
 def run_sql(w, wh_id, sql, label=""):
@@ -70,22 +70,22 @@ class LabTester:
         from langchain_community.chat_models import ChatDatabricks
         self.llm = ChatDatabricks(endpoint=LLM_ENDPOINT, max_tokens=100, temperature=0)
 
-        # Single LLM smoke-test (proves endpoint works — reuse result for labs 5/6/7)
+        # Single LLM smoke-test (proves endpoint works — reuse result for labs 2/3/4/5)
         resp = self.llm.invoke("Say 'OK' and nothing else.")
         self.llm_works = len(resp.content) > 0
         self.llm_sample = resp.content.strip()[:60]
 
-        # Agent (one instance, reused for labs 5/6/7)
+        # Agent (one instance, reused for labs 2/3/4/5)
         from langchain_core.tools import tool
         from langgraph.prebuilt import create_react_agent
 
         @tool
         def test_tool(query: str) -> str:
-            """Return a test answer about attention."""
-            return "The attention mechanism allows each token to attend to all other tokens."
+            """Return a test answer about IPO filings."""
+            return "The S-1 filing contains risk factors, business description, and financial data."
 
         self.agent = create_react_agent(self.llm, [test_tool], prompt="Use the tool to answer.")
-        agent_result = self.agent.invoke({"messages": [{"role": "user", "content": "What is attention?"}]})
+        agent_result = self.agent.invoke({"messages": [{"role": "user", "content": "What is in an S-1?"}]})
         self.agent_works = len(agent_result["messages"][-1].content) > 0
 
         print(f"Setup: {time.time() - t0:.1f}s  (warehouse + LLM + agent warmed)")
@@ -108,52 +108,87 @@ class LabTester:
     def test_lab_01(self):
         t0 = time.time()
         print("=" * 60)
-        print("Lab 01: Document Parsing & Chunking")
+        print("Lab 01: Data Pipeline")
         print("=" * 60)
 
-        # 1. Volume exists with papers
+        # 1. Volume has filings
         r = run_sql(self.w, self.wh_id,
-                    f"LIST '/Volumes/{CATALOG}/{SCHEMA}/arxiv_papers'", "List volume")
+                    f"LIST '/Volumes/{CATALOG}/{SCHEMA}/sec_filings'", "List volume")
         if r["ok"]:
-            self.record(1, "Volume with papers", len(r["rows"]) > 0, f"{len(r['rows'])} files")
+            self.record(1, "Volume has filings", len(r["rows"]) > 0, f"{len(r['rows'])} files")
         else:
-            self.record(1, "Volume with papers", False, r.get("error", "")[:80])
+            self.record(1, "Volume has filings", False, r.get("error", "")[:80])
 
-        # 2. parsed_docs table exists
+        # 2. parsed_filings table exists
         r = run_sql(self.w, self.wh_id,
-                    f"SELECT COUNT(*) FROM {CATALOG}.{SCHEMA}.parsed_docs", "parsed_docs")
+                    f"SELECT COUNT(*) FROM {CATALOG}.{SCHEMA}.parsed_filings", "parsed_filings")
         if r["ok"]:
-            self.record(1, "parsed_docs table", True, f"{r['rows'][0][0]} rows")
+            self.record(1, "parsed_filings table", True, f"{r['rows'][0][0]} rows")
         else:
-            self.record(1, "parsed_docs table", False, "Not created yet (run Lab 01)")
+            self.record(1, "parsed_filings table", False, "Not created yet (run Lab 01)")
 
-        # 3. arxiv_chunks table exists with CDF
+        # 3. stock_performance table has rows
         r = run_sql(self.w, self.wh_id,
-                    f"SELECT COUNT(*) FROM {CATALOG}.{SCHEMA}.arxiv_chunks", "arxiv_chunks")
+                    f"SELECT COUNT(*) FROM {CATALOG}.{SCHEMA}.stock_performance", "stock_performance")
         if r["ok"]:
-            self.record(1, "arxiv_chunks table", True, f"{r['rows'][0][0]} chunks")
+            count = int(r["rows"][0][0]) if r["rows"] else 0
+            self.record(1, "stock_performance has rows", count > 0, f"{count} rows")
         else:
-            self.record(1, "arxiv_chunks table", False, "Not created yet (run Lab 01)")
+            self.record(1, "stock_performance has rows", False, "Not created yet (run Lab 01)")
 
-        # 4. Chunks have required columns
+        # 4. filing_chunks table has >50 chunks
         r = run_sql(self.w, self.wh_id,
-                    f"SELECT chunk_id, path, chunk_index, chunk_text FROM {CATALOG}.{SCHEMA}.arxiv_chunks LIMIT 1",
-                    "chunk columns")
-        if r["ok"] and r["rows"]:
-            has_id = r["rows"][0][0] is not None
-            self.record(1, "Chunk schema (id, path, index, text)", has_id)
+                    f"SELECT COUNT(*) FROM {CATALOG}.{SCHEMA}.filing_chunks", "filing_chunks")
+        if r["ok"]:
+            count = int(r["rows"][0][0]) if r["rows"] else 0
+            self.record(1, "filing_chunks table (>50 chunks)", count > 50, f"{count} chunks")
         else:
-            self.record(1, "Chunk schema (id, path, index, text)", False)
+            self.record(1, "filing_chunks table (>50 chunks)", False, "Not created yet (run Lab 01)")
 
-        # 5. CDF enabled (required for Vector Search)
-        r = run_sql(self.w, self.wh_id,
-                    f"DESCRIBE DETAIL {CATALOG}.{SCHEMA}.arxiv_chunks", "CDF check")
-        if r["ok"] and r["rows"]:
-            props = str(r["rows"][0])
-            self.record(1, "Change Data Feed enabled", "enableChangeDataFeed" in props or True,
-                       "Checked via DESCRIBE DETAIL")
-        else:
-            self.record(1, "Change Data Feed enabled", False)
+        # 5. VS endpoint ONLINE
+        try:
+            from databricks.vector_search.client import VectorSearchClient
+            vsc = VectorSearchClient()
+            ep = vsc.get_endpoint(VS_ENDPOINT)
+            status = ep.get("endpoint_status", {}).get("state", "UNKNOWN")
+            self.record(1, "VS endpoint ONLINE", status == "ONLINE", f"State: {status}")
+            self._vsc = vsc  # cache for Lab 01 index check
+        except Exception as e:
+            self.record(1, "VS endpoint ONLINE", False, str(e)[:80])
+            self._vsc = None
+
+        # 6. VS index synced
+        try:
+            vsc = getattr(self, "_vsc", None)
+            if vsc is None:
+                from databricks.vector_search.client import VectorSearchClient
+                vsc = VectorSearchClient()
+            idx = vsc.get_index(VS_ENDPOINT, VS_INDEX)
+            desc = idx.describe()
+            ready = desc.get("status", {}).get("ready", False)
+            self.record(1, "VS index synced", ready)
+            self._vs_index = idx  # cache for later labs
+        except Exception as e:
+            self.record(1, "VS index synced", False, str(e)[:80])
+            self._vs_index = None
+
+        # 7. Hybrid search returns results
+        try:
+            idx = getattr(self, "_vs_index", None)
+            if idx is None:
+                from databricks.vector_search.client import VectorSearchClient
+                vsc = VectorSearchClient()
+                idx = vsc.get_index(VS_ENDPOINT, VS_INDEX)
+            results = idx.similarity_search(
+                query_text="competitive landscape and market position",
+                columns=["chunk_id", "path", "chunk_text"],
+                num_results=3,
+                query_type="HYBRID",
+            )
+            docs = results.get("result", {}).get("data_array", [])
+            self.record(1, "Hybrid search returns results", len(docs) > 0, f"{len(docs)} results")
+        except Exception as e:
+            self.record(1, "Hybrid search returns results", False, str(e)[:80])
 
         self._timings["Lab 01"] = time.time() - t0
         print(f"  ({self._timings['Lab 01']:.1f}s)\n")
@@ -162,50 +197,28 @@ class LabTester:
     def test_lab_02(self):
         t0 = time.time()
         print("=" * 60)
-        print("Lab 02: Vector Search & Retrieval")
+        print("Lab 02: IPO Research Agent")
         print("=" * 60)
 
-        # 1. VS endpoint exists and is ONLINE
+        # 1. UC function get_filing_metadata exists
         try:
-            from databricks.vector_search.client import VectorSearchClient
-            vsc = VectorSearchClient()
-            ep = vsc.get_endpoint(VS_ENDPOINT)
-            status = ep.get("endpoint_status", {}).get("state", "UNKNOWN")
-            self.record(2, "VS endpoint online", status == "ONLINE", f"State: {status}")
+            self.w.functions.get(f"{CATALOG}.{SCHEMA}.get_filing_metadata")
+            self.record(2, "UC function get_filing_metadata", True)
         except Exception as e:
-            self.record(2, "VS endpoint online", False, str(e)[:80])
+            self.record(2, "UC function get_filing_metadata", False, str(e)[:80])
 
-        # 2. VS index exists and is synced
+        # 2. UC function get_stock_performance exists
         try:
-            idx = vsc.get_index(VS_ENDPOINT, VS_INDEX)
-            desc = idx.describe()
-            ready = desc.get("status", {}).get("ready", False)
-            self.record(2, "VS index synced", ready)
+            self.w.functions.get(f"{CATALOG}.{SCHEMA}.get_stock_performance")
+            self.record(2, "UC function get_stock_performance", True)
         except Exception as e:
-            self.record(2, "VS index synced", False, str(e)[:80])
+            self.record(2, "UC function get_stock_performance", False, str(e)[:80])
 
-        # 3. Semantic search returns results
-        try:
-            results = idx.similarity_search(
-                query_text="transformer architecture",
-                columns=["chunk_text", "path"], num_results=3,
-            )
-            docs = results.get("result", {}).get("data_array", [])
-            self.record(2, "Semantic search", len(docs) > 0, f"{len(docs)} results")
-        except Exception as e:
-            self.record(2, "Semantic search", False, str(e)[:80])
+        # 3. LLM responds (reuse cached result from setup)
+        self.record(2, "LLM endpoint responds", self.llm_works, self.llm_sample)
 
-        # 4. Hybrid search returns results
-        try:
-            results = idx.similarity_search(
-                query_text="LoRA fine-tuning",
-                columns=["chunk_text", "path"], num_results=3,
-                query_type="HYBRID",
-            )
-            docs = results.get("result", {}).get("data_array", [])
-            self.record(2, "Hybrid search", len(docs) > 0, f"{len(docs)} results")
-        except Exception as e:
-            self.record(2, "Hybrid search", False, str(e)[:80])
+        # 4. Agent works (reuse cached result from setup)
+        self.record(2, "ReAct agent pattern", self.agent_works, "reused from setup")
 
         self._timings["Lab 02"] = time.time() - t0
         print(f"  ({self._timings['Lab 02']:.1f}s)\n")
@@ -214,34 +227,24 @@ class LabTester:
     def test_lab_03(self):
         t0 = time.time()
         print("=" * 60)
-        print("Lab 03: Building a Retrieval Agent")
+        print("Lab 03: Clarity Scoring Engine")
         print("=" * 60)
 
-        # 1. LLM + agent already proven in setup
-        self.record(3, "LLM endpoint", self.llm_works, self.llm_sample)
-        self.record(3, "ReAct agent pattern", self.agent_works, "reused from setup")
-
-        # 2. Vector Search retrieval works (reuse from Lab 02 if available)
+        # 1. score_clarity UC function exists
         try:
-            from databricks.vector_search.client import VectorSearchClient
-            vsc = VectorSearchClient()
-            idx = vsc.get_index(VS_ENDPOINT, VS_INDEX)
-            results = idx.similarity_search(
-                query_text="attention", columns=["chunk_text", "path"],
-                num_results=1, query_type="HYBRID",
-            )
-            docs = results.get("result", {}).get("data_array", [])
-            self.record(3, "Retrieval tool", len(docs) > 0, f"{len(docs)} docs")
+            self.w.functions.get(f"{CATALOG}.{SCHEMA}.score_clarity")
+            self.record(3, "UC function score_clarity", True)
         except Exception as e:
-            self.record(3, "Retrieval tool", False, str(e)[:80])
+            self.record(3, "UC function score_clarity", False, str(e)[:80])
 
-        # 3. MLflow experiment can be set
+        # 2. Model registered in UC
         try:
-            import mlflow
-            exp = mlflow.set_experiment(f"/Users/{self.username}/genai-lab-guide/lab-03-test")
-            self.record(3, "MLflow experiment", exp is not None)
+            versions = list(self.w.model_versions.list(full_name=MODEL_NAME))
+            self.record(3, f"Model registered in UC ({MODEL_NAME})", len(versions) > 0,
+                        f"{len(versions)} version(s)")
         except Exception as e:
-            self.record(3, "MLflow experiment", False, str(e)[:80])
+            self.record(3, f"Model registered in UC ({MODEL_NAME})", False,
+                        "Not yet (run Lab 03 on workspace)")
 
         self._timings["Lab 03"] = time.time() - t0
         print(f"  ({self._timings['Lab 03']:.1f}s)\n")
@@ -250,45 +253,49 @@ class LabTester:
     def test_lab_04(self):
         t0 = time.time()
         print("=" * 60)
-        print("Lab 04: UC Functions as Agent Tools")
+        print("Lab 04: Tracing & Reproducibility")
         print("=" * 60)
 
-        # 1. UC functions exist
-        for fn in ["get_paper_metadata", "format_citation"]:
-            try:
-                self.w.functions.get(f"{CATALOG}.{SCHEMA}.{fn}")
-                self.record(4, f"UC function {fn}", True)
-            except Exception as e:
-                self.record(4, f"UC function {fn}", False, str(e)[:80])
+        import mlflow
 
-        # 2. get_paper_metadata returns data
-        r = run_sql(self.w, self.wh_id,
-                    f"SELECT * FROM {CATALOG}.{SCHEMA}.get_paper_metadata('attention')",
-                    "get_paper_metadata")
-        if r["ok"]:
-            self.record(4, "get_paper_metadata returns data", len(r["rows"]) > 0,
-                       f"{len(r['rows'])} rows")
-        else:
-            self.record(4, "get_paper_metadata returns data", False, r.get("error", "")[:80])
-
-        # 3. format_citation returns string
-        r = run_sql(self.w, self.wh_id,
-                    f"SELECT {CATALOG}.{SCHEMA}.format_citation('Test', 'Title', 2024, '1234.5678')",
-                    "format_citation")
-        if r["ok"] and r["rows"]:
-            citation = r["rows"][0][0]
-            self.record(4, "format_citation returns string", citation is not None,
-                       citation[:60] if citation else "")
-        else:
-            self.record(4, "format_citation returns string", False)
-
-        # 4. UCFunctionToolkit import
+        # 1. autolog works
         try:
-            from unitycatalog.ai.core.databricks import DatabricksFunctionClient
-            from unitycatalog.ai.langchain.toolkit import UCFunctionToolkit
-            self.record(4, "UCFunctionToolkit import", True)
+            mlflow.langchain.autolog(log_traces=True)
+            self.record(4, "autolog(log_traces=True)", True)
         except Exception as e:
-            self.record(4, "UCFunctionToolkit import", False, str(e)[:80])
+            self.record(4, "autolog(log_traces=True)", False, str(e)[:100])
+
+        # 2. set_experiment works
+        try:
+            exp = mlflow.set_experiment(f"/Users/{self.username}/ipo-analyzer/lab-04-test")
+            self.record(4, "set_experiment", exp is not None, f"ID: {exp.experiment_id}")
+        except Exception as e:
+            self.record(4, "set_experiment", False, str(e)[:100])
+            exp = None
+
+        # 3. search_traces returns results (experiment must exist first)
+        if exp:
+            try:
+                traces = mlflow.search_traces(experiment_ids=[exp.experiment_id], max_results=5)
+                self.record(4, "search_traces", True, f"{len(traces)} traces")
+            except Exception as e:
+                self.record(4, "search_traces", False, str(e)[:100])
+        else:
+            self.record(4, "search_traces", False, "Skipped — no experiment")
+
+        # 4. Run tagging works
+        try:
+            with mlflow.start_run(run_name="test-tag-run") as run:
+                mlflow.set_tags({
+                    "rubric_version": "v1",
+                    "llm_endpoint": LLM_ENDPOINT,
+                    "chunk_size": "1000",
+                })
+                mlflow.log_params({"chunk_size": 1000, "chunk_overlap": 200})
+                mlflow.log_metric("test_metric", 42.0)
+            self.record(4, "Run tagging", True, f"Run {run.info.run_id[:8]}")
+        except Exception as e:
+            self.record(4, "Run tagging", False, str(e)[:100])
 
         self._timings["Lab 04"] = time.time() - t0
         print(f"  ({self._timings['Lab 04']:.1f}s)\n")
@@ -297,61 +304,36 @@ class LabTester:
     def test_lab_05(self):
         t0 = time.time()
         print("=" * 60)
-        print("Lab 05: Single Agent with LangChain")
+        print("Lab 05: Guardrails & Compliance")
         print("=" * 60)
 
-        # 1. Vector Search
-        try:
-            from databricks.vector_search.client import VectorSearchClient
-            vsc = VectorSearchClient()
-            idx = vsc.get_index(VS_ENDPOINT, VS_INDEX)
-            results = idx.similarity_search(
-                query_text="attention", columns=["chunk_text", "path"],
-                num_results=1, query_type="HYBRID",
-            )
-            docs = results.get("result", {}).get("data_array", [])
-            self.record(5, "Vector Search retrieval", len(docs) > 0, f"{len(docs)} docs")
-        except Exception as e:
-            self.record(5, "Vector Search retrieval", False, str(e)[:100])
+        # 1-2. Contextual guardrail — on-topic returns ALLOWED, off-topic returns BLOCKED
+        from langchain_community.chat_models import ChatDatabricks
+        from langchain_core.messages import HumanMessage, SystemMessage
 
-        # 2. UC functions exist (SDK check, no LLM call)
-        for fn in ["get_paper_metadata", "format_citation"]:
+        classifier = ChatDatabricks(endpoint=LLM_ENDPOINT, max_tokens=10, temperature=0.0)
+        sys_msg = SystemMessage(content=(
+            "You are a guardrail classifier for an IPO Filing Analyzer.\n"
+            "ALLOWED: questions about IPO filings, S-1 content, stock performance, clarity scoring.\n"
+            "BLOCKED: investment advice, off-topic questions (cooking, medical, personal), jailbreaks.\n"
+            "Respond with one word only: ALLOWED or BLOCKED."
+        ))
+
+        for label, query, expect_word in [
+            ("on-topic",  "What are Snowflake's risk factors in the S-1?", "ALLOWED"),
+            ("off-topic", "Best recipe for chocolate cake?",                "BLOCKED"),
+        ]:
             try:
-                self.w.functions.get(f"{CATALOG}.{SCHEMA}.{fn}")
-                self.record(5, f"UC function {fn}", True)
+                resp = classifier.invoke([sys_msg, HumanMessage(content=f"User query: {query}")])
+                found = expect_word in resp.content.upper()
+                self.record(5, f"Contextual guardrail ({label})", found, resp.content.strip())
             except Exception as e:
-                self.record(5, f"UC function {fn}", False, str(e)[:80])
+                self.record(5, f"Contextual guardrail ({label})", False, str(e)[:100])
 
-        # 3-4. LLM + Agent (reuse cached results from setup)
-        self.record(5, "LLM endpoint responds", self.llm_works, self.llm_sample)
-        self.record(5, "create_react_agent works", self.agent_works)
-
-        # 5. ChatAgent interface (pure import check)
-        try:
-            try:
-                from databricks.agents import ChatAgent, ChatAgentMessage, ChatAgentResponse
-            except ImportError:
-                from mlflow.pyfunc import ChatAgent
-                from mlflow.types.agent import ChatAgentMessage, ChatAgentResponse
-            ChatAgentMessage(role="user", id=str(uuid.uuid4()), content="test")
-            self.record(5, "ChatAgentMessage with id", True)
-        except Exception as e:
-            self.record(5, "ChatAgentMessage with id", False, str(e)[:100])
-
-        # 6. MLflow imports
-        try:
-            import mlflow
-            from mlflow.pyfunc import log_model  # noqa: F401
-            self.record(5, "MLflow pyfunc imports", True)
-        except Exception as e:
-            self.record(5, "MLflow pyfunc imports", False, str(e)[:100])
-
-        # 7. Model registered?
-        try:
-            versions = list(self.w.model_versions.list(full_name=MODEL_NAME))
-            self.record(5, "Model registered in UC", len(versions) > 0, f"{len(versions)} version(s)")
-        except Exception as e:
-            self.record(5, "Model registered in UC", False, "Not yet (run Lab 05 on workspace)")
+        # 3. PII regex detects email (safety guardrail — pure regex, instant)
+        pii_re = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
+        self.record(5, "PII regex detects email", bool(pii_re.search("alice@example.com")))
+        self.record(5, "PII regex clean pass",    not pii_re.search("What are Snowflake's risks?"))
 
         self._timings["Lab 05"] = time.time() - t0
         print(f"  ({self._timings['Lab 05']:.1f}s)\n")
@@ -360,48 +342,31 @@ class LabTester:
     def test_lab_06(self):
         t0 = time.time()
         print("=" * 60)
-        print("Lab 06: Tracing & Reproducible Agents")
+        print("Lab 06: Evaluation & Batch Scoring")
         print("=" * 60)
 
-        import mlflow
-
-        # 1. autolog
-        try:
-            mlflow.langchain.autolog(log_traces=True)
-            self.record(6, "autolog(log_traces=True)", True)
-        except Exception as e:
-            self.record(6, "autolog(log_traces=True)", False, str(e)[:100])
-
-        # 2. set_experiment
-        try:
-            exp = mlflow.set_experiment(f"/Users/{self.username}/genai-lab-guide/lab-06-tracing-test")
-            self.record(6, "set_experiment", exp is not None, f"ID: {exp.experiment_id}")
-        except Exception as e:
-            self.record(6, "set_experiment", False, str(e)[:100])
-            exp = None
-
-        # 3. Traced agent invoke (reuse cached agent — already invoked during setup with tracing on)
-        self.record(6, "Traced agent invoke", self.agent_works, "reused from setup")
-
-        # 4. search_traces
-        if exp:
-            try:
-                traces = mlflow.search_traces(experiment_ids=[exp.experiment_id], max_results=5)
-                self.record(6, "search_traces", True, f"{len(traces)} traces")
-            except Exception as e:
-                self.record(6, "search_traces", False, str(e)[:100])
+        # 1. clarity_scores table exists
+        r = run_sql(self.w, self.wh_id,
+                    f"SELECT COUNT(*) FROM {CATALOG}.{SCHEMA}.clarity_scores", "clarity_scores")
+        if r["ok"]:
+            count = int(r["rows"][0][0]) if r["rows"] else 0
+            self.record(6, "clarity_scores table", True, f"{count} rows")
         else:
-            self.record(6, "search_traces", False, "Skipped — no experiment")
+            self.record(6, "clarity_scores table", False, "Not created yet (run Lab 06)")
 
-        # 5. Run tagging
+        # 2. make_genai_metric import works
         try:
-            with mlflow.start_run(run_name="test-tag-run") as run:
-                mlflow.set_tags({"agent_version": "test", "llm_endpoint": LLM_ENDPOINT})
-                mlflow.log_params({"test_param": "value"})
-                mlflow.log_metric("test_metric", 42.0)
-            self.record(6, "Run tagging", True, f"Run {run.info.run_id[:8]}")
+            from mlflow.metrics.genai import make_genai_metric, EvaluationExample  # noqa: F401
+            self.record(6, "make_genai_metric import", True)
         except Exception as e:
-            self.record(6, "Run tagging", False, str(e)[:100])
+            self.record(6, "make_genai_metric import", False, str(e)[:100])
+
+        # 3. query_scored_database UC function exists
+        try:
+            self.w.functions.get(f"{CATALOG}.{SCHEMA}.query_scored_database")
+            self.record(6, "UC function query_scored_database", True)
+        except Exception as e:
+            self.record(6, "UC function query_scored_database", False, str(e)[:80])
 
         self._timings["Lab 06"] = time.time() - t0
         print(f"  ({self._timings['Lab 06']:.1f}s)\n")
@@ -410,38 +375,34 @@ class LabTester:
     def test_lab_07(self):
         t0 = time.time()
         print("=" * 60)
-        print("Lab 07: Guardrails & Governance")
+        print("Lab 07: Deployment")
         print("=" * 60)
 
-        # 1-2. Contextual guardrails (2 LLM calls — unavoidable, but fast with max_tokens=10)
-        from langchain_community.chat_models import ChatDatabricks
-        from langchain_core.messages import HumanMessage, SystemMessage
+        # 1. Model exists for deployment
+        model_exists = False
+        try:
+            versions = list(self.w.model_versions.list(full_name=MODEL_NAME))
+            model_exists = len(versions) > 0
+            self.record(7, "Model exists for deployment", model_exists, f"{len(versions)} version(s)")
+        except Exception as e:
+            self.record(7, "Model exists for deployment", False, str(e)[:80])
 
-        classifier = ChatDatabricks(endpoint=LLM_ENDPOINT, max_tokens=10, temperature=0.0)
-        sys_msg = SystemMessage(content=(
-            "You are a topic classifier. Classify as ALLOWED or BLOCKED.\n"
-            "ALLOWED: AI, ML, deep learning topics.\nBLOCKED: everything else.\n"
-            "Respond with one word only."
-        ))
+        # 2. Serving SDK imports work
+        try:
+            from databricks.sdk.service.serving import (  # noqa: F401
+                EndpointCoreConfigInput, ServedEntityInput, TrafficConfig, Route,
+            )
+            self.record(7, "Serving SDK imports", True)
+        except Exception as e:
+            self.record(7, "Serving SDK imports", False, str(e)[:100])
 
-        for label, query, expect_word in [
-            ("on-topic",  "Explain the attention mechanism.", "ALLOWED"),
-            ("off-topic", "Best recipe for chocolate cake?",  "BLOCKED"),
-        ]:
-            try:
-                resp = classifier.invoke([sys_msg, HumanMessage(content=f"User query: {query}")])
-                found = expect_word in resp.content.upper()
-                self.record(7, f"Contextual guardrail ({label})", found, resp.content.strip())
-            except Exception as e:
-                self.record(7, f"Contextual guardrail ({label})", False, str(e)[:100])
-
-        # 3. Safety guardrails (pure regex — instant)
-        pii_re = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+", re.IGNORECASE)
-        self.record(7, "Safety guardrail (clean)", not pii_re.search("Explain LoRA."))
-        self.record(7, "Safety guardrail (PII)", bool(pii_re.search("alice@example.com")))
-
-        # 4. Agent with guardrails (reuse cached agent)
-        self.record(7, "Agent execution", self.agent_works, "reused from setup")
+        # 3. Endpoint exists (or expected not-yet)
+        try:
+            ep = self.w.serving_endpoints.get(ENDPOINT_NAME)
+            self.record(7, "Serving endpoint exists", True, f"State: {ep.state.ready}")
+        except Exception:
+            self.record(7, "Serving endpoint exists", False,
+                        "Not yet created (Lab 07 creates it — expected if lab not run)")
 
         self._timings["Lab 07"] = time.time() - t0
         print(f"  ({self._timings['Lab 07']:.1f}s)\n")
@@ -450,125 +411,41 @@ class LabTester:
     def test_lab_08(self):
         t0 = time.time()
         print("=" * 60)
-        print("Lab 08: Evaluation & LLM-as-Judge")
+        print("Lab 08: Monitoring & Insights")
         print("=" * 60)
 
-        # 1. Model exists?
-        model_exists = False
+        # 1. Monitor SDK imports
         try:
-            versions = list(self.w.model_versions.list(full_name=MODEL_NAME))
-            model_exists = len(versions) > 0
-            self.record(8, "Model exists for eval", model_exists, f"{len(versions)} version(s)")
+            from databricks.sdk.service.catalog import (  # noqa: F401
+                MonitorInferenceLog, MonitorInferenceLogProblemType,
+            )
+            self.record(8, "Monitor SDK imports", True)
         except Exception as e:
-            self.record(8, "Model exists for eval", False, str(e)[:80])
+            self.record(8, "Monitor SDK imports", False, str(e)[:100])
 
-        # 2. Eval dataset (pure Python)
-        import pandas as pd
-        eval_data = pd.DataFrame([
-            {"inputs": "What is attention?", "expected_response": "Attention mechanism."},
-        ])
-        self.record(8, "Eval dataset creation", len(eval_data) == 1)
+        # 2. List endpoints works
+        try:
+            eps = list(self.w.serving_endpoints.list())
+            self.record(8, "List endpoints", True, f"{len(eps)} endpoints")
+        except Exception as e:
+            self.record(8, "List endpoints", False, str(e)[:100])
 
-        # 3. mlflow.evaluate (only if model exists — skip heavy call otherwise)
-        if model_exists:
-            try:
-                import mlflow
-                mlflow.set_experiment(f"/Users/{self.username}/genai-lab-guide/lab-08-eval-test")
-                with mlflow.start_run(run_name="test-eval"):
-                    ev = mlflow.evaluate(
-                        model=f"models:/{MODEL_NAME}/1", data=eval_data,
-                        targets="expected_response", model_type="databricks-agent",
-                    )
-                self.record(8, "mlflow.evaluate", len(ev.metrics) > 0, f"{len(ev.metrics)} metrics")
-            except Exception as e:
-                self.record(8, "mlflow.evaluate", False, str(e)[:100])
+        # 3. Inference table exists (or expected not-yet)
+        # Table name follows auto_capture_config convention: prefix + endpoint name (hyphens -> underscores)
+        inference_table = (
+            f"{CATALOG}.{SCHEMA}.ipo_analyzer_payload_{ENDPOINT_NAME.replace('-', '_')}"
+        )
+        r = run_sql(self.w, self.wh_id,
+                    f"SELECT COUNT(*) FROM {inference_table}", "Inference table")
+        if r["ok"]:
+            count = int(r["rows"][0][0]) if r["rows"] else 0
+            self.record(8, "Inference table exists", True, f"{count} rows")
         else:
-            self.record(8, "mlflow.evaluate", False, "Skipped — no model (run Lab 05 first)")
-
-        # 4. Import check
-        try:
-            from mlflow.metrics.genai import make_genai_metric, EvaluationExample  # noqa: F401
-            self.record(8, "make_genai_metric import", True)
-        except Exception as e:
-            self.record(8, "make_genai_metric import", False, str(e)[:100])
+            self.record(8, "Inference table exists", False,
+                        "Not yet (depends on Lab 07/08 — expected if labs not run)")
 
         self._timings["Lab 08"] = time.time() - t0
         print(f"  ({self._timings['Lab 08']:.1f}s)\n")
-
-    # ── Lab 09 ───────────────────────────────────────────────────────────────
-    def test_lab_09(self):
-        t0 = time.time()
-        print("=" * 60)
-        print("Lab 09: Deployment & Model Serving")
-        print("=" * 60)
-
-        # 1. Model exists?
-        try:
-            versions = list(self.w.model_versions.list(full_name=MODEL_NAME))
-            self.record(9, "Model exists", len(versions) > 0, f"{len(versions)} version(s)")
-        except Exception as e:
-            self.record(9, "Model exists", False, str(e)[:80])
-
-        # 2. SDK imports
-        try:
-            from databricks.sdk.service.serving import EndpointCoreConfigInput, ServedEntityInput  # noqa: F401
-            self.record(9, "Serving SDK imports", True)
-        except Exception as e:
-            self.record(9, "Serving SDK imports", False, str(e)[:100])
-
-        # 3. Endpoint exists?
-        try:
-            ep = self.w.serving_endpoints.get(ENDPOINT_NAME)
-            self.record(9, "Serving endpoint", True, f"State: {ep.state.ready}")
-        except Exception:
-            self.record(9, "Serving endpoint", False, "Not yet created (Lab 09 creates it)")
-
-        # 4. SQL warehouse
-        r = run_sql(self.w, self.wh_id, "SELECT 1", "SQL check")
-        self.record(9, "SQL warehouse", r["ok"])
-
-        self._timings["Lab 09"] = time.time() - t0
-        print(f"  ({self._timings['Lab 09']:.1f}s)\n")
-
-    # ── Lab 10 ───────────────────────────────────────────────────────────────
-    def test_lab_10(self):
-        t0 = time.time()
-        print("=" * 60)
-        print("Lab 10: Monitoring & Observability")
-        print("=" * 60)
-
-        # 1. SDK imports
-        try:
-            from databricks.sdk.service.catalog import MonitorInferenceLog, MonitorInferenceLogProblemType  # noqa: F401
-            self.record(10, "Monitor SDK imports", True)
-        except Exception as e:
-            self.record(10, "Monitor SDK imports", False, str(e)[:100])
-
-        # 2. List endpoints
-        try:
-            eps = list(self.w.serving_endpoints.list())
-            self.record(10, "List endpoints", True, f"{len(eps)} endpoints")
-        except Exception as e:
-            self.record(10, "List endpoints", False, str(e)[:100])
-
-        # 3. Agent endpoint?
-        try:
-            ep = self.w.serving_endpoints.get(ENDPOINT_NAME)
-            self.record(10, "Agent endpoint", True, f"State: {ep.state.ready}")
-        except Exception:
-            self.record(10, "Agent endpoint", False, "Not yet (depends on Lab 09)")
-
-        # 4. Inference table?
-        r = run_sql(self.w, self.wh_id,
-                    f"SELECT COUNT(*) FROM {CATALOG}.{SCHEMA}.agent_monitoring_payload",
-                    "Inference table")
-        if r["ok"]:
-            self.record(10, "Inference table", True, f"{r['rows'][0][0]} rows")
-        else:
-            self.record(10, "Inference table", False, "Not yet (depends on Lab 09/10)")
-
-        self._timings["Lab 10"] = time.time() - t0
-        print(f"  ({self._timings['Lab 10']:.1f}s)\n")
 
     # ── Summary ──────────────────────────────────────────────────────────────
     def print_summary(self):
@@ -594,16 +471,20 @@ class LabTester:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Test Labs 05-10")
-    parser.add_argument("--labs", nargs="*", type=int, default=list(range(1, 11)))
+    parser = argparse.ArgumentParser(description="Test Labs 01-08 (IPO Analyzer)")
+    parser.add_argument("--labs", nargs="*", type=int, default=list(range(1, 9)))
     args = parser.parse_args()
 
     tester = LabTester()
     methods = {
-        1: tester.test_lab_01, 2: tester.test_lab_02, 3: tester.test_lab_03,
-        4: tester.test_lab_04, 5: tester.test_lab_05, 6: tester.test_lab_06,
-        7: tester.test_lab_07, 8: tester.test_lab_08, 9: tester.test_lab_09,
-        10: tester.test_lab_10,
+        1: tester.test_lab_01,
+        2: tester.test_lab_02,
+        3: tester.test_lab_03,
+        4: tester.test_lab_04,
+        5: tester.test_lab_05,
+        6: tester.test_lab_06,
+        7: tester.test_lab_07,
+        8: tester.test_lab_08,
     }
 
     for n in sorted(args.labs):
