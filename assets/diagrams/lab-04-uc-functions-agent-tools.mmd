@@ -1,0 +1,17 @@
+flowchart LR
+    SQL["UC SQL Function\nget_paper_metadata"]
+    PY["UC Python Function\nformat_citation"]
+    RT["Retrieval Tool\nsearch_arxiv_papers"]
+    TK["UCFunctionToolkit\nfunction_names=[...]"]
+    AG["LangChain Agent\nAgentExecutor"]
+    LLM["ChatDatabricks\nLlama-3.3-70B"]
+    TS["Tool Selection\nvia function schema"]
+    RS["Response\ngrounded + cited"]
+
+    SQL -->|"auto schema"| TK
+    PY  -->|"auto schema"| TK
+    TK  -->|"LangChain tools"| AG
+    RT  -->|"@tool"| AG
+    LLM -->|"generates response"| AG
+    AG  --> TS
+    TS  --> RS

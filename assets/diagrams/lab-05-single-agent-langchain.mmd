@@ -1,0 +1,17 @@
+flowchart LR
+    UI["User Input"]
+    CL["Intent Classifier\nChatPromptTemplate + LLM"]
+    RA["Retrieval Agent\nsearch_arxiv_papers"]
+    CT["Citation Tool\nformat_citation UC Fn"]
+    MT["Metadata Tool\nget_paper_metadata UC Fn"]
+    CA["ArxivResearchAgent\nChatAgent subclass"]
+    RS["Response\nChatAgentResponse"]
+
+    UI --> CL
+    CL -->|"RESEARCH"| RA
+    CL -->|"CITATION"| CT
+    CL -->|"METADATA"| MT
+    RA --> CA
+    CT --> CA
+    MT --> CA
+    CA --> RS

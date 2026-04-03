@@ -1,0 +1,28 @@
+flowchart TD
+    AQ["Agent Query\nAgentExecutor.invoke()"]
+    AT["mlflow.langchain.autolog\nlog_traces=True"]
+    TR["MLflow Trace\n(one per invocation)"]
+
+    SL["Span: LLM Call\nprompt, completion, token counts, latency"]
+    ST["Span: Tool Call\ntool name, input args, output"]
+    SR["Span: Retrieval\nquery, num_results, returned docs"]
+
+    EU["MLflow Experiment UI\nTraces tab — timeline view"]
+    PQ["mlflow.search_traces()\nPandas DataFrame"]
+
+    RN["mlflow.start_run()\n+ set_tags()"]
+    TG["Tags\nagent_version, llm_endpoint,\nembedding_model, chunk_size,\nchunk_overlap, vector_search_type"]
+    RC["mlflow.search_runs()\nfilter_string='tags.agent_version IN ...'"]
+    CT["Comparison Table\nmetrics across versions"]
+
+    AQ --> AT
+    AT --> TR
+    TR --> SL
+    TR --> ST
+    TR --> SR
+    TR --> EU
+    TR --> PQ
+
+    RN --> TG
+    TG --> RC
+    RC --> CT

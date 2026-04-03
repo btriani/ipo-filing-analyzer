@@ -1,0 +1,22 @@
+flowchart TD
+    UI["User Input"]
+    SG_IN["Safety Guardrail\n(regex PII check — input)"]
+    CG["Contextual Guardrail\n(LLM topic classifier)"]
+    AG["Agent\nsearch_arxiv_papers + UC tools"]
+    SG_OUT["Output Safety Check\n(regex PII check — output)"]
+    RESP["Response to User"]
+
+    BLOCK_SG_IN["BLOCKED\nPII detected in input"]
+    BLOCK_CG["BLOCKED\nQuery out of topic scope"]
+    BLOCK_SG_OUT["BLOCKED\nPII detected in output"]
+
+    UI --> SG_IN
+    SG_IN -- "safe" --> CG
+    SG_IN -- "PII found" --> BLOCK_SG_IN
+
+    CG -- "on-topic" --> AG
+    CG -- "off-topic" --> BLOCK_CG
+
+    AG --> SG_OUT
+    SG_OUT -- "safe" --> RESP
+    SG_OUT -- "PII found" --> BLOCK_SG_OUT

@@ -1,0 +1,31 @@
+graph TB
+    subgraph "Unity Catalog"
+        DELTA[Delta Table<br/>genai_lab_guide.default.arxiv_chunks<br/>CDF enabled · chunk_id PK]
+    end
+
+    subgraph "Managed Embeddings"
+        EMBED[databricks-bge-large-en<br/>1 024-dim embeddings]
+    end
+
+    subgraph "Vector Search Index"
+        INDEX[Delta Sync Index<br/>arxiv_chunks_index<br/>TRIGGERED pipeline]
+    end
+
+    subgraph "Query Types"
+        SEM[Semantic Search<br/>cosine similarity]
+        KW[Keyword Search<br/>BM25]
+        HYB[Hybrid Search<br/>RRF fusion]
+    end
+
+    subgraph "Reranker"
+        RR[databricks-reranker-v1<br/>cross-encoder re-scoring]
+    end
+
+    subgraph "Results"
+        OUT[Top-k Chunks<br/>+ relevance scores]
+    end
+
+    DELTA --> EMBED --> INDEX
+    INDEX --> SEM --> OUT
+    INDEX --> KW --> OUT
+    INDEX --> HYB --> RR --> OUT

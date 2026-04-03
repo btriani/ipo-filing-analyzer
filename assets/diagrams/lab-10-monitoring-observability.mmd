@@ -1,0 +1,27 @@
+flowchart TD
+    SE["Model Serving Endpoint\n(genai-lab-agent-endpoint)"]
+    IT["Inference Table\n(agent_monitoring_payload)"]
+    LM["Lakehouse Monitor\n(quality_monitors.create)"]
+    DB["Monitoring Dashboard\n(Quality tab / /Shared/monitoring)"]
+    AL["Alert\n(SQL Alert on metric threshold)"]
+    RE["Re-Evaluate\n(Lab 08 — LLM-as-a-Judge)"]
+    IM["Improve\n(prompts / retrieval / model)"]
+    RD["Redeploy\n(Lab 09 — new UC model version)"]
+    VA["Validate\n(metrics return to baseline)"]
+
+    SE -->|"auto_capture_config"| IT
+    IT -->|"profiling"| LM
+    LM --> DB
+    DB --> AL
+    AL -->|"issue detected"| RE
+    RE --> IM
+    IM --> RD
+    RD --> VA
+    VA -->|"close alert"| SE
+
+    subgraph Continuous Improvement Cycle
+        RE
+        IM
+        RD
+        VA
+    end

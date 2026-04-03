@@ -1,0 +1,37 @@
+flowchart LR
+    subgraph INGEST["1. Ingest"]
+        direction TB
+        PDF[PDF / Image Files\nin UC Volume]
+    end
+
+    subgraph PARSE["2. Parse"]
+        direction TB
+        AIP[ai_parse_document]
+        CLEAN[ai_query\nSemantic Cleaning]
+        AIP --> CLEAN
+    end
+
+    subgraph CHUNK["3. Chunk"]
+        direction TB
+        SPLIT[RecursiveCharacter\nTextSplitter]
+        FLAT[Flatten\n1 row per chunk]
+        SPLIT --> FLAT
+    end
+
+    subgraph INDEX["4. Index"]
+        direction TB
+        DELTA[Delta Table\nCDF + Primary Key]
+        EMB[Embedding Model\nbge-large-en]
+        VS[Vector Search\nDelta Sync Index]
+        DELTA --> EMB --> VS
+    end
+
+    subgraph RETRIEVE["5. Retrieve"]
+        direction TB
+        SEM[Semantic\nANN]
+        KW[Full-Text\nBM25]
+        HYB[Hybrid\nSemantic + BM25]
+        RR[Reranker\nRe-score Top K]
+    end
+
+    INGEST --> PARSE --> CHUNK --> INDEX --> RETRIEVE

@@ -1,0 +1,25 @@
+graph TB
+    subgraph "Unity Catalog Volume"
+        PDF[arXiv PDFs<br/>5-8 papers]
+    end
+
+    subgraph "Document Parsing"
+        PARSE[ai_parse_document<br/>version 2.0]
+        META[Parsed Output<br/>pages, elements,<br/>tables, images]
+    end
+
+    subgraph "Text Cleaning"
+        RAW[Raw Page Text]
+        CLEAN[ai_query + LLM<br/>Semantic Cleaning]
+    end
+
+    subgraph "Chunking"
+        SPLIT[RecursiveCharacterTextSplitter<br/>chunk_size=1000<br/>chunk_overlap=200]
+        FLAT[Flattened Chunks<br/>one row per chunk]
+    end
+
+    subgraph "Storage"
+        DELTA[Delta Table<br/>genai_lab_guide.default.arxiv_chunks<br/>CDF enabled]
+    end
+
+    PDF --> PARSE --> META --> RAW --> CLEAN --> SPLIT --> FLAT --> DELTA

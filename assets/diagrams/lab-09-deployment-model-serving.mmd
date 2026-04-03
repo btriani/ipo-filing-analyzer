@@ -1,0 +1,28 @@
+flowchart TD
+    UCR["UC Model Registry\n(Catalog.Schema.Model)"]
+    SE["Model Serving Endpoint\n(genai-lab-agent-endpoint)"]
+    REST["REST API\n(w.serving_endpoints.query)"]
+    AQ["ai_query() Batch\n(SQL / Delta table)"]
+    AB["A/B Traffic Split\n(TrafficConfig routes)"]
+    V1["Model v1\n50% traffic"]
+    V2["Model v2\n50% traffic"]
+    RESP["Responses"]
+
+    UCR --> SE
+    SE --> REST
+    SE --> AQ
+    SE --> AB
+    AB --> V1
+    AB --> V2
+    V1 --> RESP
+    V2 --> RESP
+    REST --> RESP
+    AQ --> RESP
+
+    subgraph Serving Tier
+        PT["Provisioned Throughput\nReserved DBU/hr\nGuaranteed TPS"]
+        PPT["Pay-per-Token (Serverless)\nBilled per token\nScale-to-zero"]
+    end
+
+    SE -.->|"High-volume / SLA"| PT
+    SE -.->|"Dev / Bursty"| PPT

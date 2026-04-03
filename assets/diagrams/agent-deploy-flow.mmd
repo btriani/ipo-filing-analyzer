@@ -1,0 +1,23 @@
+flowchart LR
+    REG["UC Registry<br/>Model Version"]
+
+    subgraph GUARD["4 · Governance"]
+        GR["Guardrails<br/>Context + Safety + PII"]
+        GW["AI Gateway<br/>Config-based"]
+    end
+
+    subgraph SERVE["5 · Deploy"]
+        EP["Model Serving<br/>Endpoint"]
+        AB["A/B Testing<br/>Traffic Split"]
+        BT["Batch Inference<br/>ai_query()"]
+    end
+
+    subgraph MON["6 · Monitor & Evaluate"]
+        IT["Inference Tables<br/>Log All Requests"]
+        LM["Lakehouse Monitor<br/>Drift + Quality"]
+        EV["Evaluation<br/>MLflow + Mosaic AI"]
+    end
+
+    REG --> GUARD --> SERVE
+    EP --> IT --> LM --> EV
+    EV -.->|"feedback loop"| REG
