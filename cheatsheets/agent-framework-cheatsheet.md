@@ -124,7 +124,9 @@ all_tools = [search_arxiv_papers] + toolkit.tools
 
 ### 2. Build the Agent
 
-A LangChain agent combines an LLM, tools, and a prompt. The LLM reads the user's question, decides which tool(s) to call, processes the results, and generates a final answer.
+A LangGraph ReAct agent combines an LLM, tools, and a system prompt. The LLM reads the user's question, decides which tool(s) to call, processes the results, and generates a final answer. LangGraph manages the reasoning loop internally — no separate `AgentExecutor` required.
+
+> **Note:** `create_tool_calling_agent` + `AgentExecutor` (the old LangChain pattern) are not available in Databricks Serverless (langchain ≥ 1.2). Use `create_react_agent` from `langgraph.prebuilt` instead.
 
 #### Configure the LLM
 
@@ -135,46 +137,30 @@ from langchain_community.chat_models import ChatDatabricks
 llm = ChatDatabricks(endpoint="databricks-meta-llama-3-3-70b-instruct")
 ```
 
-#### Create Prompt Template
+#### Create and Run the Agent
 
-The prompt tells the agent how to behave. `{agent_scratchpad}` is where LangChain inserts tool call/result history during multi-step reasoning.
+The prompt is a plain string passed as the `prompt=` keyword argument — no `ChatPromptTemplate` or `{agent_scratchpad}` needed.
 
 ```python
-from langchain_core.prompts import ChatPromptTemplate
+from langgraph.prebuilt import create_react_agent
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are an arXiv Research Assistant. You help users understand
+# System prompt: plain string describing agent behaviour
+SYSTEM_PROMPT = """You are an arXiv Research Assistant. You help users understand
 AI/ML research papers.
 
 When answering:
 1. Always search the knowledge base first
 2. Cite the source paper by name
-3. If the knowledge base doesn't have the answer, say so clearly"""),
+3. If the knowledge base doesn't have the answer, say so clearly"""
 
-    ("placeholder", "{chat_history}"),     # prior conversation turns
-    ("human", "{input}"),                  # the user's current question
-    ("placeholder", "{agent_scratchpad}"), # tool calls + results (managed by LangChain)
-])
-```
+# create_react_agent: wires LLM + tools + prompt together; manages the loop internally
+agent = create_react_agent(llm, all_tools, prompt=SYSTEM_PROMPT)
 
-#### Create and Run the Agent
+# Input is a messages dict (OpenAI-compatible format)
+response = agent.invoke({"messages": [{"role": "user", "content": "What is the attention mechanism in transformers?"}]})
 
-```python
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-
-# create_tool_calling_agent: wires LLM + tools + prompt together
-agent = create_tool_calling_agent(llm, all_tools, prompt)
-
-# AgentExecutor: runs the agent loop (question → tool call → result → answer)
-executor = AgentExecutor(
-    agent=agent,
-    tools=all_tools,
-    verbose=True       # prints each step (tool calls, results) — useful for debugging
-)
-
-# Run it
-response = executor.invoke({"input": "What is the attention mechanism in transformers?"})
-print(response["output"])
+# Output: response["messages"] is a list; the last message is the assistant's answer
+print(response["messages"][-1].content)
 ```
 
 ---
@@ -197,12 +183,12 @@ class ArxivResearchAgent(ChatAgent):
         # Extract the latest user message
         last_message = messages[-1]["content"]
 
-        # Run through the LangChain agent
-        response = executor.invoke({"input": last_message})
+        # Run through the LangGraph ReAct agent
+        response = agent.invoke({"messages": [{"role": "user", "content": last_message}]})
 
         return ChatAgentResponse(
             messages=[
-                ChatAgentMessage(role="assistant", content=response["output"])
+                ChatAgentMessage(role="assistant", content=response["messages"][-1].content)
             ]
         )
 ```
@@ -249,10 +235,10 @@ print(f"Registered: version {registered.version}")
 Tracing captures every step of agent execution: LLM calls, tool invocations, latencies, inputs/outputs.
 
 ```python
-# One line — automatically traces all LangChain operations
+# One line — automatically traces all LangChain/LangGraph operations
 mlflow.langchain.autolog(log_traces=True)
 
-# After this, every executor.invoke() call generates a trace
+# After this, every agent.invoke() call generates a trace
 # visible in the MLflow Experiment UI → Traces tab
 ```
 
