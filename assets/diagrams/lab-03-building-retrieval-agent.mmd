@@ -1,7 +1,0 @@
-flowchart LR
-    IDX[("VS Index")] --> RT["Retrieval Tool<br/>similarity_search"]
-    RT --> AGT["LangChain Agent<br/>AgentExecutor"]
-    LLM["ChatDatabricks<br/>Llama 3.3 70B"] --> AGT
-    PROMPT["System Prompt<br/>arXiv Assistant"] --> AGT
-    AGT --> LOG["MLflow<br/>log_model"]
-    LOG --> REG["UC Registry<br/>register_model"]

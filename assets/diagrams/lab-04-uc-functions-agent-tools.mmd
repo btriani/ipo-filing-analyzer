@@ -1,6 +1,0 @@
-flowchart LR
-    SQL["UC SQL Function<br/>get_paper_metadata"] --> TK["UCFunctionToolkit<br/>+ DatabricksFunctionClient"]
-    PY["UC Python Function<br/>format_citation"] --> TK
-    RT["Retrieval Tool<br/>@tool decorator"] --> TOOLS["Combined<br/>Tool List"]
-    TK --> TOOLS
-    TOOLS --> AGT["LangChain Agent<br/>AgentExecutor"]

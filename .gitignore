@@ -29,5 +29,14 @@ Thumbs.db
 # Databricks
 .databricks/
 
-# Downloaded papers (not bundled — downloaded at setup time)
+# Downloaded filings (not bundled — downloaded at setup time)
+assets/sec-filings/*.html
 assets/arxiv-papers/*.pdf
+assets/stock_performance.csv
+
+# MLflow local runs
+mlruns/
+
+# Credentials
+.databricks-env
+*.token

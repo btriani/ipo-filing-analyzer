@@ -1,7 +1,0 @@
-flowchart LR
-    DELTA[("Delta Table<br/>arxiv_chunks")] --> EMB["Embedding Model<br/>bge-large-en"]
-    EMB --> IDX["Vector Search<br/>Delta Sync Index"]
-    IDX --> SEM["Semantic<br/>ANN"]
-    IDX --> FT["Full-Text<br/>BM25"]
-    IDX --> HYB["Hybrid<br/>ANN + BM25"]
-    HYB --> RR["Reranker<br/>Re-score Top K"]

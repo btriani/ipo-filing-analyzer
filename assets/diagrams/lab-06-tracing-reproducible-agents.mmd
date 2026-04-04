@@ -1,6 +1,0 @@
-flowchart LR
-    AGT["Agent<br/>invoke()"] --> AUTO["autolog<br/>log_traces=True"]
-    AUTO --> SPANS["Trace Spans<br/>LLM / Tool /<br/>Retrieval"]
-    SPANS --> UI["MLflow UI<br/>Traces Tab"]
-    AGT --> TAGS["Experiment Tags<br/>version / config"]
-    TAGS --> CMP["search_runs<br/>Compare Versions"]

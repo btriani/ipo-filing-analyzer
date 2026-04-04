@@ -11,7 +11,7 @@ CATALOG = "ipo_analyzer"
 SCHEMA = "default"
 VS_ENDPOINT = "ipo_analyzer_vs_endpoint"
 VS_INDEX = f"{CATALOG}.{SCHEMA}.filing_chunks_index"
-LLM_ENDPOINT = "databricks-llama-4-maverick"
+LLM_ENDPOINT = "databricks-meta-llama-3.1-405b-instruct"
 
 SYSTEM_PROMPT = (
     "You are an IPO Filing Analyzer for a financial research firm. "

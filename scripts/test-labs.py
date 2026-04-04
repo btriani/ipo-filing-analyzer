@@ -24,7 +24,7 @@ from databricks.sdk.service.sql import StatementState
 # ── Configuration ─────────────────────────────────────────────────────────────
 CATALOG = "ipo_analyzer"
 SCHEMA = "default"
-LLM_ENDPOINT = "databricks-llama-4-maverick"
+LLM_ENDPOINT = "databricks-meta-llama-3.1-405b-instruct"
 VS_ENDPOINT = "ipo_analyzer_vs_endpoint"
 VS_INDEX = f"{CATALOG}.{SCHEMA}.filing_chunks_index"
 MODEL_NAME = f"{CATALOG}.{SCHEMA}.ipo_filing_agent"

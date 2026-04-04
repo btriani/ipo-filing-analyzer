@@ -1,9 +1,0 @@
-flowchart LR
-    IN["User Input"] --> CLS["Intent Classifier<br/>RESEARCH / CITATION<br/>/ METADATA"]
-    CLS --> RT["Retrieval<br/>Agent"]
-    CLS --> CT["Citation<br/>Tool"]
-    CLS --> MT["Metadata<br/>Tool"]
-    RT --> CA["ChatAgent<br/>predict()"]
-    CT --> CA
-    MT --> CA
-    CA --> LOG["MLflow<br/>log + register"]

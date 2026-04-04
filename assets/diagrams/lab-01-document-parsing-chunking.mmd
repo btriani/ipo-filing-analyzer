@@ -1,6 +1,0 @@
-flowchart LR
-    PDF["PDFs in<br/>UC Volume"] --> PARSE["ai_parse_document()"]
-    PARSE --> CLEAN["ai_query()<br/>Semantic Cleaning"]
-    CLEAN --> SPLIT["Recursive<br/>CharacterTextSplitter"]
-    SPLIT --> FLAT["Flatten<br/>1 row per chunk"]
-    FLAT --> DELTA[("Delta Table<br/>arxiv_chunks<br/>CDF + PK")]

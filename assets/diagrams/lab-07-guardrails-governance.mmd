@@ -1,7 +1,0 @@
-flowchart LR
-    IN["User<br/>Input"] --> SAF["Safety Check<br/>PII Regex"]
-    SAF --> CTX["Context Check<br/>LLM Classifier"]
-    CTX --> AGT["Agent<br/>Execution"]
-    AGT --> SAF2["Output<br/>Safety Check"]
-    SAF2 --> OUT["Response"]
-    GW["AI Gateway<br/>Platform Guardrails"] -.-> AGT

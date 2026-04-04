@@ -1,7 +1,0 @@
-flowchart LR
-    EP["Serving<br/>Endpoint"] --> IT[("Inference Table<br/>All Requests")]
-    IT --> MON["Lakehouse<br/>Monitor"]
-    MON --> DASH["Dashboard<br/>Drift + Quality"]
-    DASH --> ALERT["Alerts"]
-    ALERT -.-> EVAL["Re-evaluate<br/>Lab 08"]
-    EVAL -.-> EP

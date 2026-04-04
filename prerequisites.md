@@ -1,6 +1,6 @@
 # Prerequisites
 
-Everything you need before starting the labs.
+Everything you need before running the notebooks.
 
 ## 1. Databricks Workspace
 
@@ -8,119 +8,62 @@ You need a Databricks workspace with **pay-as-you-go** pricing. Community Editio
 
 Sign up: [https://www.databricks.com/try-databricks](https://www.databricks.com/try-databricks)
 
-> **Important:** Choose the pay-as-you-go plan. You only pay for what you use. Total cost for all labs is ~$12-19.
-
 ### Required Features
 
 Your workspace must have:
 - **Unity Catalog** enabled (default on new workspaces)
 - **Serverless compute** available
-- **Foundation Model APIs** access — specifically `databricks-llama-4-maverick`
+- **Foundation Model APIs** access
 
 ## 2. Foundation Model APIs
 
-Labs use `databricks-llama-4-maverick` for all LLM calls (tool calling, scoring, evaluation). Verify it is available in your workspace:
+The notebooks use `databricks-meta-llama-3.1-405b-instruct` for all LLM calls. See the [README](README.md#newer-isnt-always-better-for-agents) for why we chose this over newer models.
 
-1. Go to **Serving** in the left sidebar.
-2. Search for `databricks-llama-4-maverick`.
-3. If it appears with a green status, you're set.
+Other endpoints that work on trial workspaces:
+- `databricks-meta-llama-3-3-70b-instruct` — cheaper, slightly less capable
+- `databricks-meta-llama-3-1-8b-instruct` — cheapest, good for simple tasks
 
-Other endpoints available on trial workspaces (not required, but good to know):
-- `databricks-meta-llama-3-3-70b-instruct` — good alternative for simple tasks
-- `databricks-meta-llama-3-1-8b-instruct` — cheap, good for summarization
+> **Note:** `databricks-gpt-5-*` endpoints appear in trial workspaces but are rate-limited to 0 (blocked). `databricks-llama-4-maverick` has unreliable tool calling — not recommended for agents.
 
 ## 3. Python 3.10+
 
-Required for running the setup scripts locally. Notebooks install their own dependencies via `%pip` — you don't need everything locally.
-
-**macOS:**
-```bash
-brew install python@3.12
-```
-
-**Windows:**
-```powershell
-winget install Python.Python.3.12
-```
-
-**Linux:**
-```bash
-sudo apt install python3.12 python3.12-venv
-```
-
-### Python Packages (for setup scripts only)
+Required for running the setup scripts locally. Notebooks install their own dependencies via `%pip`.
 
 ```bash
-pip install databricks-sdk
-```
-
-The notebooks install their own packages. The full set used across all labs:
-
-```
-databricks-sdk
-sec-edgar-downloader
-yfinance
-langchain
-langchain-community
-langgraph
-mlflow
-databricks-agents
+pip install databricks-sdk yfinance beautifulsoup4
 ```
 
 ## 4. Compute
 
-All labs run on **serverless compute** — no cluster setup needed. Serverless starts instantly and bills per-second of actual usage.
-
-### What's Running (and What Costs Money)
+All notebooks run on **serverless compute** — no cluster setup needed.
 
 | Compute Type | Used In | Cost | Action Required |
 |---|---|---|---|
-| Serverless Notebooks | All labs | ~$0.07/DBU, per-second | Nothing — auto-managed |
-| Foundation Model APIs | Labs 01-08 | Pay-per-token | Uses `databricks-llama-4-maverick` |
-| Vector Search Endpoint | Labs 01-07 | ~$0.50-1.00/hr | **Delete when done for the day** |
-| Model Serving Endpoint | Labs 07-08 | Pay-per-token, scale-to-zero | Delete when done |
+| Serverless Notebooks | All notebooks | ~$0.07/DBU, per-second | Auto-managed |
+| Foundation Model APIs | Notebooks 01-08 | Pay-per-token | Nothing |
+| Vector Search Endpoint | Notebooks 01-07 | ~$0.50-1.00/hr | **Delete when done** |
+| Model Serving Endpoint | Notebooks 07-08 | Pay-per-token | Delete when done |
 
-> **Important:** The Vector Search endpoint is the only resource that bills continuously. Lab 01 creates it. Keep it running through Lab 07, then delete it (or delete and recreate between sessions).
+> **Important:** The Vector Search endpoint bills continuously. Delete it between sessions.
 
-## 5. Catalog
-
-The setup script creates everything in the `ipo_analyzer` catalog:
-
-```
-ipo_analyzer
-└── default
-    ├── filings_raw        (raw S-1 text, ~22 filings)
-    ├── filing_chunks      (chunked text for Vector Search)
-    ├── stock_returns      (price data from yfinance)
-    └── clarity_scores     (populated in Lab 06)
-```
-
-Run the setup script before Lab 01:
+## 5. Setup
 
 ```bash
+export DATABRICKS_HOST=https://your-workspace.cloud.databricks.com
+export DATABRICKS_TOKEN=dapi...
 python scripts/setup-catalog.py
 ```
 
-This downloads ~22 S-1 filings via `sec-edgar-downloader`, loads stock return data, creates the Unity Catalog objects, and confirms the Vector Search endpoint exists (or creates it).
+This downloads 19 S-1 filings from SEC EDGAR, loads stock data via yfinance, creates Unity Catalog objects, and uploads filings to a Volume.
 
 ## Cost Estimate
 
 | Resource | Estimated Cost |
 |---|---|
-| Serverless compute (all labs) | ~$3-5 |
-| Foundation Model API calls (all labs) | ~$5-8 |
-| Vector Search endpoint (one session) | ~$2-4 |
-| Model Serving endpoint (Lab 07-08) | ~$2-3 |
-| **Total** | **~$12-19** |
+| Serverless compute | ~$3-5 |
+| Foundation Model API calls | ~$5-10 |
+| Vector Search endpoint | ~$2-4 |
+| Model Serving endpoint | ~$2-3 |
+| **Total** | **~$15-25** |
 
-Costs vary based on how long you leave the Vector Search endpoint running between sessions. Delete it when you stop for the day.
-
-## Next Step
-
-Run the setup script, then open Lab 01:
-
-```bash
-python scripts/setup-catalog.py
-```
-
-Start with [Lab 01: Data Pipeline](labs/01-data-pipeline.ipynb).
+Delete the Vector Search endpoint when you stop for the day to minimize costs.

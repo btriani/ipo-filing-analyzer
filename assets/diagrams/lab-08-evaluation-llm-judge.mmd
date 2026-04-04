@@ -1,9 +1,0 @@
-flowchart LR
-    DS[("Eval Dataset<br/>question +<br/>expected answer")] --> AGT["Agent"]
-    AGT --> RESP["Responses"]
-    RESP --> BI["Built-in Metrics<br/>relevance /<br/>groundedness"]
-    RESP --> JUDGE["LLM-as-Judge<br/>Custom Rubric"]
-    RESP --> MAI["Agent Eval<br/>Mosaic AI"]
-    BI --> CMP["Compare<br/>Versions"]
-    JUDGE --> CMP
-    MAI --> CMP
