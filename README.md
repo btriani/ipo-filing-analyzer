@@ -25,9 +25,9 @@ Yahoo Finance → Stock Performance Table          LangGraph ReAct Agent
                                                    ├── score_clarity (LLM-as-judge UC function)
                                                    └── query_scored_database (UC function)
                                                         ↓
-                                              Model Serving Endpoint
+                                              Model Serving Endpoint ← curl / REST API
                                                         ↓
-                                              Lakehouse Monitor
+                                              Inference Table + Lakehouse Monitor
 ```
 
 **Stack:** Databricks (Unity Catalog, Vector Search, Model Serving, Lakehouse Monitor), LangGraph, LangChain, MLflow, BeautifulSoup
@@ -44,8 +44,22 @@ Each notebook builds on the previous, progressively assembling the full system:
 | 04 | [Tracing](labs/04-tracing-reproducibility.ipynb) | MLflow autologging, run tagging, version comparison | Traces make "why did Coinbase score 43?" answerable |
 | 05 | [Guardrails](labs/05-guardrails-compliance.ipynb) | PII detection, topic classifier, safety policies | LLM-based classifiers vs regex for different threat types |
 | 06 | [Evaluation](labs/06-evaluation-batch-scoring.ipynb) | `mlflow.evaluate`, batch scoring, custom metrics | `make_genai_metric` for domain-specific evaluation |
-| 07 | [Deployment](labs/07-deployment.ipynb) | Model Serving endpoint, A/B traffic config | Complex agents may fail to deploy — [see limitations](#model-serving-limitations) |
+| 07 | [Deployment](labs/07-deployment.ipynb) | Model Serving endpoint, A/B traffic config, inference tables | Lazy initialization for agents with external dependencies |
 | 08 | [Monitoring](labs/08-monitoring-insights.ipynb) | Inference logging, Lakehouse Monitor, drift detection | Monitor setup is straightforward; getting data into it is the hard part |
+
+## Live Endpoint
+
+The deployed agent accepts natural language queries via REST API:
+
+```bash
+curl -X POST "https://<workspace>/serving-endpoints/ipo-analyzer-endpoint/invocations" \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"Analyze Rubrik: What does their S-1 say about competition? Score their business description for clarity. How did RBRK perform after IPO?"}]}'
+```
+
+Response:
+> Rubrik's competition falls into three categories: data management and protection vendors, smaller cloud and SaaS data management vendors, and vendors that provide cyber/ransomware detection... The clarity score of Rubrik's business description is 78... Rubrik's IPO price was $37.0, and the twelve-month return was 88.8%.
 
 ## What Actually Worked
 
@@ -101,15 +115,26 @@ mlflow.pyfunc.log_model(
 )
 ```
 
+### Lazy Initialization for Model Serving
+
+Agents that connect to external resources (Vector Search, UC functions) in `__init__` fail to load in the Model Serving container. The fix: defer all external connections to the first `predict()` call, and declare resource dependencies via `mlflow.models.resources`:
+
+```python
+class IpoAnalyzerAgent(ChatAgent):
+    def __init__(self):
+        self._initialized = False  # no external connections here
+
+    def _lazy_init(self):
+        if self._initialized: return
+        self._vs_index = VectorSearchClient().get_index(...)  # connect on first call
+        self._initialized = True
+
+    def predict(self, messages, context=None, custom_inputs=None):
+        self._lazy_init()
+        # ... agent logic
+```
+
 ## What Didn't Work (and Why)
-
-### Model Serving Limitations
-
-The ChatAgent deploys successfully to Unity Catalog, but **Model Serving fails to load it** on trial workspaces. The agent's `__init__` method connects to Vector Search and UC functions — these external dependencies aren't available during the serving container's model loading phase.
-
-**Impact:** Labs 07-08 demonstrate the deployment *pattern* (endpoint creation, A/B traffic, inference logging) but the endpoint doesn't serve live traffic.
-
-**What production would need:** Environment variables for endpoint URLs, lazy initialization of external clients, or Databricks' managed agent deployment (which handles dependency injection).
 
 ### Llama 4 Maverick: Newer Isn't Always Better for Agents
 
@@ -123,11 +148,7 @@ Llama 4 Maverick (the default Databricks foundation model) has good general capa
 Actually calls get_stock_performance → gets real data → synthesizes answer
 ```
 
-Llama 3.3 70B and 3.1 405B — older models — handle structured tool calling reliably.
-
-### GPT-5 Models: Listed but Blocked on Trial
-
-All `databricks-gpt-5-*` endpoints appear in the workspace but return `rate_limit=0` on trial accounts. The Llama models are the only pay-per-token options that actually work.
+Llama 3.3 70B and 3.1 405B — older models — handle structured tool calling reliably. Model recency doesn't correlate with agent reliability.
 
 ### Vector Search Index Sync Timing
 
@@ -135,11 +156,21 @@ After rebuilding chunks and creating a new VS index, there's a **multi-minute sy
 
 **Lesson:** Always verify `index.describe()["status"]["ready"] == True` before querying, and build wait loops into pipelines.
 
+### MLflow API Churn
+
+Several MLflow APIs changed between versions during this build:
+- `search_traces()` DataFrame columns renamed (`request_id` → `trace_id`, `status` → `state`)
+- `make_genai_metric()` now requires `metric_metadata={"assessment_type": "ANSWER"}`
+- `ChatAgent.predict()` signature gained a third parameter (`custom_inputs`)
+- Object-based model logging deprecated in favor of code-based logging
+
+**Lesson:** Pin your MLflow version and test imports before assuming API stability.
+
 ## Quick Start
 
 ### Prerequisites
 
-- Databricks workspace (pay-as-you-go or trial)
+- Databricks workspace with Unity Catalog, Vector Search, and Model Serving
 - Foundation Model APIs enabled
 - Python 3.10+ locally (for setup script)
 - `pip install databricks-sdk yfinance beautifulsoup4`
@@ -148,7 +179,7 @@ After rebuilding chunks and creating a new VS index, there's a **multi-minute sy
 
 ```bash
 # Clone
-git clone https://github.com/YOUR_USERNAME/ipo-filing-analyzer.git
+git clone https://github.com/btriani/ipo-filing-analyzer.git
 cd ipo-filing-analyzer
 
 # Configure
@@ -159,14 +190,14 @@ export DATABRICKS_TOKEN=dapi...
 python scripts/setup-catalog.py
 
 # Upload notebooks to workspace
-# Then open Lab 01 in Databricks and run sequentially through Lab 08
+# Then open Notebook 01 in Databricks and run sequentially through Notebook 08
 ```
 
 ### Validation
 
 ```bash
-python scripts/test-labs.py              # all labs
-python scripts/test-labs.py --labs 1 2 3  # specific labs
+python scripts/test-labs.py              # all notebooks
+python scripts/test-labs.py --labs 1 2 3  # specific notebooks
 ```
 
 ## Companies Analyzed
@@ -175,7 +206,7 @@ python scripts/test-labs.py --labs 1 2 3  # specific labs
 
 ## Cost
 
-~$15-25 total across all notebooks. The Vector Search endpoint (~$0.50-1.00/hr) is the main cost — delete it when not working. Run `python scripts/cleanup.py` when done.
+~$15-25 total across all notebooks. The Vector Search endpoint (~$0.50-1.00/hr) is the main continuous cost — delete it when not working. Run `python scripts/cleanup.py` when done.
 
 ## License
 
