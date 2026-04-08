@@ -16,19 +16,9 @@ The signature query: *"Show me the clarity scores of the top 10 performing tech 
 
 ## Architecture
 
-```
-SEC EDGAR (HTML) → BeautifulSoup → Delta Table → Vector Search Index
-                                                        ↓
-Yahoo Finance → Stock Performance Table          LangGraph ReAct Agent
-                                                   ├── search_filings (two-stage retrieval)
-                                                   ├── get_stock_performance (UC function)
-                                                   ├── score_clarity (LLM-as-judge UC function)
-                                                   └── query_scored_database (UC function)
-                                                        ↓
-                                              Model Serving Endpoint ← curl / REST API
-                                                        ↓
-                                              Inference Table + Lakehouse Monitor
-```
+<a href="assets/diagrams/architecture-overview.png">
+  <img src="assets/diagrams/architecture-overview.png" alt="Architecture Overview" width="100%">
+</a>
 
 **Stack:** Databricks (Unity Catalog, Vector Search, Model Serving, Lakehouse Monitor), LangGraph, LangChain, MLflow, BeautifulSoup
 

@@ -1,0 +1,32 @@
+flowchart LR
+    subgraph INGEST["Data Ingestion"]
+        direction TB
+        SEC[SEC EDGAR\nHTML Filings] --> BS[BeautifulSoup\nParser]
+        BS --> DELTA[Delta Table\nChunked Text]
+        DELTA --> VS[Vector Search\nIndex]
+        YF[Yahoo Finance] --> STOCK[Stock Performance\nTable]
+    end
+
+    subgraph AGENT["LangGraph ReAct Agent"]
+        direction TB
+        subgraph RETRIEVAL["search_filings — Two-Stage Retrieval"]
+            direction LR
+            SQL[Stage 1\nSQL Keyword Filter] --> VEC[Stage 2\nVector Search]
+        end
+        PERF[get_stock_performance\nUC Function]
+        SCORE[score_clarity\nLLM-as-Judge]
+        QUERY[query_scored_database\nUC Function]
+    end
+
+    subgraph DEPLOY["Deploy & Monitor"]
+        direction TB
+        REST[curl / REST API] --> EP[Model Serving\nEndpoint]
+        EP --> INF[Inference Table\n+ Lakehouse Monitor]
+    end
+
+    DELTA --> SQL
+    VS --> VEC
+    STOCK --> PERF
+    DELTA --> SCORE
+    SCORE --> QUERY
+    AGENT --> EP
